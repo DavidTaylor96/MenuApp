@@ -1,49 +1,66 @@
-// store.ts (changing extension to .ts)
-import create, { SetState } from 'zustand';
+import create from 'zustand';
+import { io } from 'socket.io-client';
+import { MenuItem } from '../types/menu';
 
 // Define the shape of our store state and actions
 interface SocketStoreState {
-  data: string | null;  // Assuming data received from WebSocket is a string; adjust as necessary
-  sendData: (data: string) => void;  // Adjust the data type if needed
+  data: string | null;
+  basket: MenuItem[];
+  addToBasket: (item: MenuItem) => void;
+  removeFromBasket: (item: MenuItem) => void;
+  sendData: (data: string) => void; 
 }
 
 const useSocketStore = create<SocketStoreState>((set) => {
-  // WebSocket instance
-  const socket = new WebSocket('ws://localhost:3000');
+  // Socket.io instance; replace 'localhost' with your computer's IP if testing on mobile devices or emulators
+  const socket = io('http://0.0.0.0:3000');
 
-  // Event listeners for the WebSocket
-  socket.onopen = (event: Event) => {
-    console.log("WebSocket connection opened:", event);
-  };
+  // Event listeners for Socket.io
+  socket.on('connect', () => {
+    console.log("Connected to Socket.io server");
+  });
 
-  socket.onmessage = (event: MessageEvent) => {
-    const data = event.data;
+  socket.on('basketUpdate', (updatedBasket: MenuItem[]) => {
+    set({ basket: updatedBasket });
+  });
+
+  socket.on('message', (data: string) => {
     set({ data });
-  };
+  });
 
-  socket.onerror = (error: Event) => {
-    console.error("WebSocket error:", error);
-  };
+  socket.on('connect_error', (error: any) => {
+    console.error("Socket.io connection error:", error);
+  });
 
-  socket.onclose = (event: CloseEvent) => {
-    if (event.wasClean) {
-      console.log(`Closed cleanly, code=${event.code}, reason=${event.reason}`);
+  socket.on('disconnect', (reason: string) => {
+    if (reason === 'io server disconnect') {
+      console.log('Disconnected by server');
     } else {
-      console.error('Connection died');
+      console.error('Connection died:', reason);
     }
+  });
+
+  // Expose a function to send data via Socket.io
+  const sendData = (data: string) => {
+    socket.emit('message', data);
   };
 
-  // Expose a function to send data via WebSocket
-  const sendData = (data: string) => {  // Ensure data type matches your requirements
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.send(data);
-    }
-  };
+    // Modify sendData to add/remove items from basket
+    const addToBasket = (item: MenuItem) => {
+      socket.emit('addToBasket', item);
+    };
+  
+    const removeFromBasket = (item: MenuItem) => {
+      socket.emit('removeFromBasket', item);
+    };
 
-  return {
-    data: null,
-    sendData
-  };
+    return {
+      data: null,
+      basket: [],
+      addToBasket,
+      removeFromBasket,
+      sendData
+    };
 });
 
 export default useSocketStore;

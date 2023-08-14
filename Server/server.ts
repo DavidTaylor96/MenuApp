@@ -1,36 +1,49 @@
 import express, { Request, Response } from 'express';
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
 import http from 'http';
-
-interface ServerToClientEvents {
-  noArg: () => void;
-  basicEmit: (a: number, b: string, c: Buffer) => void;
-  withAck: (d: string, callback: (e: number) => void) => void;
-}
-
-interface ClientToServerEvents {
-  hello: () => void;
-}
+import { MenuItem} from '../types/menu'
 
 const app = express();
 const httpServer = http.createServer(app);
-const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer);
-
-app.get('/', (req: Request, res: Response) => {
-    res.send('Hello, Express with Socket.io and TypeScript!');
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*",  // Adjust as needed, '*' allows any origin but is not recommended for production.
+    methods: ["GET", "POST"]
+  }
 });
 
-io.on('connection', (socket) => {
-  socket.emit('noArg');
-  socket.emit('basicEmit', 1, '2', Buffer.from([3]));
-  socket.emit('withAck', '4', (e) => {});
+app.get('/', (req: Request, res: Response) => {
+  res.send('Hello, Express with Socket.io and TypeScript!');
+});
 
-  socket.on('hello', () => {
-    console.log('Hello received from client.');
+let basket: MenuItem[] = [];
+io.on('connection', (socket: Socket) => {
+  console.log('Client connected:', socket.id);
+
+  // Listening for the 'message' event (matching the client-side)
+  socket.on('message', (data: string) => {
+    console.log('Received message from client:', data);
+
+    // Broadcasting to all clients (including the sender)
+    io.emit('message', data);
+  });
+
+  socket.on('addToBasket', (item: MenuItem) => {
+    basket.push(item);
+    io.emit('basketUpdate', basket);  // Send updated basket to all clients
+  });
+  
+  socket.on('removeFromBasket', (item: MenuItem) => {
+    basket = basket.filter(basketItem => basketItem.name !== item.name);
+    io.emit('basketUpdate', basket);  // Send updated basket to all clients
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
   });
 });
 
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Server is running on http://0.0.0.0:${PORT}`);
 });
